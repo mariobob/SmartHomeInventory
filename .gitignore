@@ -1,0 +1,14 @@
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# IDE stuff
+.cache/
+.idea/
+.vscode/
+build/
+out/
+tmp/
+*.iml
