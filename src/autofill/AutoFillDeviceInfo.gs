@@ -9,41 +9,6 @@
  */
 
 // =============================================================================
-// COLUMN MAPPING
-// =============================================================================
-// Maps field names to their column indices (1-based)
-
-const COLUMN_MAP = {
-  "Room": 1,
-  "Device type": 2,
-  "Manufacturer": 3,
-  "Nickname": 4,
-  "Actual device name": 5,
-  "Mac address": 6,
-  "Zigbee ID": 7,
-  "Model": 8,
-  "Serial number": 9,
-  "Luminous flux": 10,
-  "Power": 11,
-  "Plug type": 12,
-  "Row done?": 13,
-  "Smart": 14,
-  "Installed?": 15,
-  "Old name": 16,
-  "Notes": 17
-};
-
-// =============================================================================
-// CONFIGURATION
-// =============================================================================
-
-const CONFIG = {
-  SHEET_NAME: "Items",
-  HEADER_ROW: 1,
-  DATA_START_ROW: 2
-};
-
-// =============================================================================
 // MAIN TRIGGER FUNCTION
 // =============================================================================
 
@@ -132,16 +97,8 @@ function onEdit(e) {
  * @param {Object} deviceInfo - The device information object
  */
 function fillDeviceInformation(sheet, row, deviceInfo) {
-  const fieldsToFill = [
-    "Device type",
-    "Manufacturer",
-    "Actual device name",
-    "Zigbee ID",
-    "Luminous flux",
-    "Power",
-    "Plug type",
-    "Smart"
-  ];
+  // Use shared FILLABLE_FIELDS from Config.gs
+  const fieldsToFill = FILLABLE_FIELDS;
   
   // Prepare batch update
   const updates = [];
