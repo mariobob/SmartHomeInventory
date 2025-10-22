@@ -248,13 +248,13 @@ const DEVICE_MAP = {
   },
   
   // Light > Hue lightstrip plus
-  "LCL001": {
+  "929002269101": {
     "Device type": "Light",
     "Manufacturer": "Philips Hue",
     "Actual device name": "Hue lightstrip plus",
     "Zigbee ID": "LCL001",
-    "Luminous flux": "",
-    "Power": "",
+    "Luminous flux": "1600 lm",
+    "Power": "20 W",
     "Plug type": "EU",
     "Smart": "Yes"
   },
