@@ -305,7 +305,7 @@ const DEVICE_MAP = {
     "Actual device name": "Hue smart plug",
     "Zigbee ID": "LOM001",
     "Luminous flux": "N/A",
-    "Power": "2300 W",
+    "Power": "2200 W",
     "Plug type": "EU",
     "Smart": "Yes"
   },
