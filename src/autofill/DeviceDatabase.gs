@@ -594,7 +594,19 @@ const DEVICE_MAP = {
     "Plug type": "EU",
     "Smart": "Yes"
   },
-  
+
+  // Climate > Xiaomi Smart Tower Heater Lite
+  "LSNFJ02LX": {
+    "Device type": "Climate",
+    "Manufacturer": "Xiaomi",
+    "Actual device name": "Xiaomi Smart Tower Heater Lite",
+    "Zigbee ID": "-",
+    "Luminous flux": "N/A",
+    "Power": "2000 W",
+    "Plug type": "EU",
+    "Smart": "Yes"
+  },
+
   // Climate > Bergen AION AI 12K
   "BER12AUCXB-K6DNA1A/I": {
     "Device type": "Climate",
