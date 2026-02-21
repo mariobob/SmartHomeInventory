@@ -21,6 +21,8 @@ function onOpen() {
       .addSeparator()
       .addItem('Show Database Stats', 'showDatabaseStats'))
     .addSeparator()
+    .addItem('🔀 Sort Items by Room', 'sortItemsWithinRooms')
+    .addSeparator()
     .addSubMenu(ui.createMenu('ℹ️ Help')
       .addItem('About Auto-Fill', 'showAutoFillHelp')
       .addItem('About Validation', 'showValidationHelp'))
