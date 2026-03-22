@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 13px;
+      padding: 12px;
+      margin: 0;
+      color: #202124;
+    }
+    h3 {
+      margin: 0 0 10px 0;
+      font-size: 14px;
+      color: #1a73e8;
+    }
+    .hint {
+      background: #e8f0fe;
+      border-left: 3px solid #1a73e8;
+      padding: 6px 8px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #174ea6;
+      border-radius: 2px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #5f6368;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input[type="text"], select {
+      width: 100%;
+      padding: 6px 8px;
+      margin-top: 3px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #202124;
+      background: #fff;
+    }
+    input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 2px rgba(26,115,232,0.15);
+    }
+    .required { color: #d93025; }
+    .btn-row {
+      margin-top: 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    button {
+      padding: 8px 18px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: bold;
+    }
+    #btnSave {
+      background: #1a73e8;
+      color: white;
+    }
+    #btnSave:hover { background: #1557b0; }
+    #btnSave:disabled { background: #9aa0a6; cursor: not-allowed; }
+    #btnClear {
+      background: #f8f9fa;
+      color: #5f6368;
+      border: 1px solid #dadce0;
+    }
+    #btnClear:hover { background: #e8eaed; }
+    #status {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: none;
+    }
+    #status.success { background: #e6f4ea; color: #137333; border: 1px solid #ceead6; display: block; }
+    #status.error   { background: #fce8e6; color: #c5221f; border: 1px solid #f5c6c6; display: block; }
+    #status.loading { background: #f8f9fa; color: #5f6368; border: 1px solid #dadce0; display: block; }
+    #customCount {
+      margin-top: 14px;
+      font-size: 11px;
+      color: #80868b;
+      text-align: right;
+    }
+    .section-divider {
+      border: none;
+      border-top: 1px solid #e8eaed;
+      margin: 14px 0 4px 0;
+    }
+  </style>
+</head>
+<body>
+  <h3>Add Model to Database</h3>
+
+  <div class="hint" id="hint">
+    Select a cell in the Model column first, then open this dialog — the model will be pre-filled.
+  </div>
+
+  <label>Model <span class="required">*</span></label>
+  <input id="model" type="text" placeholder="e.g. LCT015" />
+
+  <hr class="section-divider">
+
+  <label>Device type <span class="required">*</span></label>
+  <select id="deviceType">
+    <option value="">— select —</option>
+    <option>Appliance</option>
+    <option>Camera</option>
+    <option>Climate</option>
+    <option>Computer</option>
+    <option>Console</option>
+    <option>Hub</option>
+    <option>Light</option>
+    <option>Phone</option>
+    <option>Plug</option>
+    <option>Printer</option>
+    <option>Sensor</option>
+    <option>Server</option>
+    <option>Speaker</option>
+    <option>Switch</option>
+    <option>Tag</option>
+    <option>TV</option>
+    <option>Watch</option>
+    <option>Wifi</option>
+  </select>
+
+  <label>Manufacturer</label>
+  <input id="manufacturer" type="text" placeholder="e.g. Philips Hue" />
+
+  <label>Actual device name <span class="required">*</span></label>
+  <input id="actualName" type="text" placeholder="e.g. Hue color lamp" />
+
+  <label>Zigbee ID</label>
+  <input id="zigbeeId" type="text" value="-" />
+
+  <label>Luminous flux</label>
+  <input id="lumens" type="text" value="N/A" placeholder="e.g. 806 lm" />
+
+  <label>Power</label>
+  <input id="power" type="text" placeholder="e.g. 9 W, Battery, 2000 W" />
+
+  <label>Plug type</label>
+  <select id="plugType">
+    <option value="">— select —</option>
+    <option>EU</option>
+    <option>UK</option>
+    <option>AC</option>
+    <option>E27</option>
+    <option>E14</option>
+    <option>GU10</option>
+    <option>USB-C</option>
+    <option>USB</option>
+    <option>microUSB</option>
+    <option>Battery AA</option>
+    <option>Battery AAA</option>
+    <option>Battery CR2032</option>
+    <option>Battery CR2450</option>
+    <option>Other</option>
+  </select>
+
+  <label>Smart</label>
+  <select id="smart">
+    <option value="Yes">Yes</option>
+    <option value="No">No</option>
+  </select>
+
+  <div class="btn-row">
+    <button id="btnSave" onclick="save()">Save to Database</button>
+    <button id="btnClear" onclick="clearForm()">Clear</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="customCount"></div>
+
+  <script>
+    // On load: pre-fill model from the active cell if possible
+    window.addEventListener('load', function () {
+      google.script.run
+        .withSuccessHandler(function (result) {
+          if (result && result.model) {
+            document.getElementById('model').value = result.model;
+            if (result.isUnknown) {
+              document.getElementById('hint').textContent =
+                '⚠️ Model "' + result.model + '" was flagged as unknown. Fill in the details below.';
+              document.getElementById('hint').style.background = '#fef7e0';
+              document.getElementById('hint').style.borderLeftColor = '#f9ab00';
+              document.getElementById('hint').style.color = '#7d4e00';
+            } else {
+              document.getElementById('hint').textContent =
+                'Model pre-filled from active cell. You can edit it if needed.';
+            }
+          }
+          refreshCount();
+        })
+        .withFailureHandler(function () { refreshCount(); })
+        .getCurrentModelFromSelection();
+    });
+
+    function save() {
+      var model      = document.getElementById('model').value.trim();
+      var deviceType = document.getElementById('deviceType').value;
+      var actualName = document.getElementById('actualName').value.trim();
+
+      if (!model) { showStatus('Model is required.', 'error'); return; }
+      if (!deviceType) { showStatus('Device type is required.', 'error'); return; }
+      if (!actualName) { showStatus('Actual device name is required.', 'error'); return; }
+
+      var formData = {
+        model:        model,
+        deviceType:   deviceType,
+        manufacturer: document.getElementById('manufacturer').value.trim(),
+        actualName:   actualName,
+        zigbeeId:     document.getElementById('zigbeeId').value.trim() || '-',
+        lumens:       document.getElementById('lumens').value.trim()   || 'N/A',
+        power:        document.getElementById('power').value.trim(),
+        plugType:     document.getElementById('plugType').value,
+        smart:        document.getElementById('smart').value
+      };
+
+      document.getElementById('btnSave').disabled = true;
+      showStatus('Saving…', 'loading');
+
+      google.script.run
+        .withSuccessHandler(function (msg) {
+          showStatus(msg, 'success');
+          document.getElementById('btnSave').disabled = false;
+          refreshCount();
+        })
+        .withFailureHandler(function (err) {
+          showStatus('Error: ' + err.message, 'error');
+          document.getElementById('btnSave').disabled = false;
+        })
+        .saveModelToDatabase(formData);
+    }
+
+    function clearForm() {
+      document.getElementById('model').value       = '';
+      document.getElementById('deviceType').value  = '';
+      document.getElementById('manufacturer').value = '';
+      document.getElementById('actualName').value  = '';
+      document.getElementById('zigbeeId').value    = '-';
+      document.getElementById('lumens').value      = 'N/A';
+      document.getElementById('power').value       = '';
+      document.getElementById('plugType').value    = '';
+      document.getElementById('smart').value       = 'Yes';
+      document.getElementById('status').className  = '';
+      document.getElementById('status').textContent = '';
+    }
+
+    function showStatus(msg, type) {
+      var el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = type;
+    }
+
+    function refreshCount() {
+      google.script.run
+        .withSuccessHandler(function (list) {
+          var count = Object.keys(list).length;
+          document.getElementById('customCount').textContent =
+            count > 0 ? count + ' custom model' + (count === 1 ? '' : 's') + ' stored' : '';
+        })
+        .getCustomDeviceList();
+    }
+  </script>
+</body>
+</html>

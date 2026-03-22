@@ -49,22 +49,32 @@ function onEdit(e) {
       return;
     }
     
-    // Look up the model in the device map
+    // Look up the model in the device map (including custom devices)
     const deviceInfo = getDeviceInfo(modelValue);
     
-    // If model not found, show a gentle notification
+    // If model not found, highlight the cell and leave a note with instructions
     if (!deviceInfo) {
+      range.setBackground('#FFF3CD');
+      range.setNote(
+        '⚠️ Unknown model: "' + modelValue + '"\n' +
+        'Use: 🏠 Smart Home Tools → ➕ Add Model to Database'
+      );
       SpreadsheetApp.getActiveSpreadsheet().toast(
-        `Model "${modelValue}" not found in database. Please check the model number.`,
-        "Model Not Found",
-        5
+        'Model "' + modelValue + '" not found — cell highlighted yellow.\n' +
+        'Open Smart Home Tools → ➕ Add Model to Database to add it.',
+        'Unknown Model',
+        7
       );
       return;
     }
-    
+
+    // Clear any previous unknown-model highlight when model IS found
+    range.setBackground(null);
+    range.clearNote();
+
     // Auto-fill the device information
     fillDeviceInformation(sheet, row, deviceInfo);
-    
+
     // Show success notification
     SpreadsheetApp.getActiveSpreadsheet().toast(
       `Device information auto-filled for model "${modelValue}"`,

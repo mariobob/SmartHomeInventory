@@ -22,6 +22,7 @@ function onOpen() {
       .addItem('Show Database Stats', 'showDatabaseStats'))
     .addSeparator()
     .addItem('🔀 Sort Items by Room', 'sortItemsWithinRooms')
+    .addItem('➕ Add Model to Database', 'showAddModelDialog')
     .addSeparator()
     .addSubMenu(ui.createMenu('ℹ️ Help')
       .addItem('About Auto-Fill', 'showAutoFillHelp')

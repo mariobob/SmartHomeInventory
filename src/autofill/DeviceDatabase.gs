@@ -715,7 +715,20 @@ const DEVICE_MAP = {
  * @return {Object|null} Device information or null if not found
  */
 function getDeviceInfo(model) {
-  return DEVICE_MAP[model] || null;
+  if (!model) return null;
+  // Check hardcoded database first
+  if (DEVICE_MAP[model]) return DEVICE_MAP[model];
+  // Fall back to user-added custom devices (stored in Script Properties)
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty('CUSTOM_DEVICES');
+    if (raw) {
+      const custom = JSON.parse(raw);
+      if (custom[model]) return custom[model];
+    }
+  } catch (e) {
+    Logger.log('CustomDeviceDB read error: ' + e.message);
+  }
+  return null;
 }
 
 /**

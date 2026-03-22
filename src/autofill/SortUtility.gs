@@ -68,3 +68,50 @@ function sortItemsWithinRooms() {
     'Sort Complete'
   );
 }
+
+// ONE-TIME MIGRATION: setupStatusColumn
+// Run once to add the Status column (col 18) and migrate existing room values.
+// After running, delete this function (or leave it — it's safe to re-run).
+function setupStatusColumn() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Items');
+  const STATUS_COL = 18;
+  const ROOM_COL   = 1;
+
+  // Status-like values that live in the Room column but are really statuses
+  const STATUS_ROOMS = new Set([
+    'Extra', 'Unassigned', 'For sale', 'Gone', 'Malfunctioned', 'Old home'
+  ]);
+
+  const lastRow = sheet.getLastRow();
+
+  // 1. Add / overwrite column 18 header
+  sheet.getRange(1, STATUS_COL).setValue('Status')
+    .setFontWeight('bold')
+    .setBackground('#d9ead3'); // light green, matching other header colours
+
+  // 2. Build status values for all data rows
+  const roomValues   = sheet.getRange(2, ROOM_COL, lastRow - 1, 1).getValues();
+  const statusValues = roomValues.map(([room]) => {
+    if (STATUS_ROOMS.has(room)) return [room];   // move room → status
+    return ['Active'];                            // real location → Active
+  });
+
+  // 3. Write Status column
+  sheet.getRange(2, STATUS_COL, lastRow - 1, 1).setValues(statusValues);
+
+  // 4. Clear the Room cell for rows where Room was a status value
+  const updatedRooms = roomValues.map(([room]) => {
+    return STATUS_ROOMS.has(room) ? [''] : [room];
+  });
+  sheet.getRange(2, ROOM_COL, lastRow - 1, 1).setValues(updatedRooms);
+
+  // 5. Summary
+  const moved = statusValues.filter(([s]) => s !== 'Active').length;
+  ss.toast(
+    `Status column created.\n${moved} rows moved from Room → Status.\n${lastRow - 1 - moved} rows set to Status = Active.`,
+    'Setup Complete',
+    8
+  );
+}
+// END ONE-TIME MIGRATION
