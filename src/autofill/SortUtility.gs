@@ -29,22 +29,56 @@
 // Physical room order (most important). Rooms not listed here sort after these
 // alphabetically; rows with an empty Room sort last.
 const ROOM_ORDER = [
-  'Balcony', 'Bedroom', 'Wardrobe', 'Bathroom', 'Staircase', 'Hallway',
-  'Storage', 'Lower bathroom', 'Office', 'Studio', 'Kitchen', 'Living room',
-  'Terrace', 'Backyard', 'Garage door', 'Garage', 'Front door', 'Front yard',
-  'Porch', 'Apartment', 'On the go', 'Unassigned', 'Extra', 'Old home',
-  'For sale', 'Gone', 'Malfunctioned'
+  'Balcony',
+  'Bedroom',
+  'Wardrobe',
+  'Bathroom',
+  'Staircase',
+  'Hallway',
+  'Storage',
+  'Lower bathroom',
+  'Office',
+  'Studio',
+  'Kitchen',
+  'Living room',
+  'Terrace',
+  'Backyard',
+  'Garage door',
+  'Garage',
+  'Front door',
+  'Front yard',
+  'Porch',
+  'Apartment',
+  'On the go',
+  'Unassigned',
+  'Extra',
+  'Old home',
+  'For sale',
+  'Gone',
+  'Malfunctioned'
 ];
 
 // Device-type order. Types not listed (e.g. Hub, Appliance, Server, Printer,
 // Console, Computer, Phone, Watch, Tag, Cord) sort after these alphabetically.
 const DEVICE_TYPE_ORDER = [
-  'Light', 'Plug', 'Sensor', 'Switch', 'Speaker', 'Wifi', 'Climate', 'Camera', 'TV'
+  'Light',
+  'Plug',
+  'Sensor',
+  'Switch',
+  'Speaker',
+  'Wifi',
+  'Climate',
+  'Camera',
+  'TV'
 ];
 
 // Manufacturer order. Manufacturers not listed sort after these alphabetically.
 const MANUFACTURER_ORDER = [
-  'Philips Hue', 'Google', 'Xiaomi', 'Amazon', 'Samsung'
+  'Philips Hue',
+  'Google',
+  'Xiaomi',
+  'Amazon',
+  'Samsung'
 ];
 
 // If reaching the target order needs more than this many row moves, fall back to
