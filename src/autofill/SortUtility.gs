@@ -10,12 +10,14 @@
  * numeric-aware sort ("lamp 2" before "lamp 10").
  *
  * HOW IT APPLIES THE SORT
- * The sort is applied as the minimum set of whole-row moves needed to reach
- * the target order (Sheet.moveRows). This keeps Google Sheets version history
- * clean — e.g. adding three rows and sorting shows up as three row MOVES, not a
- * full-sheet value rewrite — and it preserves each row's values, formatting,
- * notes and data validation automatically. If a very large reorder is required
- * (more than MOVE_LIMIT moves) it falls back to a single bulk rewrite for speed.
+ * It applies the MINIMUM number of whole-row moves needed to reach the target
+ * order: it keeps the longest subsequence of rows that are already in the right
+ * relative order (the LIS) fixed, and moves only the rows that are genuinely out
+ * of place (Sheet.moveRows). So adding a few rows / nudging a few values and
+ * sorting shows up in version history as just those few row MOVES — not a
+ * full-sheet rewrite — and formatting / notes / data-validation travel with each
+ * row automatically. Only if a genuinely large reorder is needed (more than
+ * MOVE_LIMIT moves) does it fall back to a single bulk rewrite, for speed.
  *
  * To change the order, just edit the arrays in the SORT ORDER CONFIG block.
  */
@@ -46,11 +48,11 @@ const MANUFACTURER_ORDER = [
 ];
 
 // If reaching the target order needs more than this many row moves, fall back to
-// a single bulk rewrite instead (faster for big reshuffles).
+// a single bulk rewrite instead (faster for big one-time reshuffles).
 const MOVE_LIMIT = 60;
 
 // =============================================================================
-// SORT
+// COMPARATOR
 // =============================================================================
 
 /**
@@ -88,6 +90,31 @@ function itemCompare_(a, b) {
   return a.nick.localeCompare(b.nick, undefined, { numeric: true, sensitivity: 'base' });
 }
 
+/**
+ * Indices of a longest strictly-increasing subsequence of seq.
+ * These positions are already in the right relative order, so they stay put.
+ */
+function lisIndices_(seq) {
+  const n = seq.length;
+  const tails = [];
+  const prev = new Array(n).fill(-1);
+  for (let i = 0; i < n; i++) {
+    const x = seq[i];
+    let lo = 0, hi = tails.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (seq[tails[m]] < x) lo = m + 1; else hi = m; }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  let k = tails.length ? tails[tails.length - 1] : -1;
+  const res = [];
+  while (k >= 0) { res.push(k); k = prev[k]; }
+  return res.reverse();
+}
+
+// =============================================================================
+// SORT
+// =============================================================================
+
 function sortItemsWithinRooms() {
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
@@ -98,7 +125,6 @@ function sortItemsWithinRooms() {
 
   if (n < 2) { ss.toast('Nothing to sort.', 'Sort'); return; }
 
-  // Read only the key columns to decide the order.
   const RM = COLUMN_MAP['Room']         - 1;
   const DT = COLUMN_MAP['Device type']  - 1;
   const MF = COLUMN_MAP['Manufacturer'] - 1;
@@ -111,31 +137,49 @@ function sortItemsWithinRooms() {
 
   // Target order (stable sort keeps equal rows in their current relative order).
   const desired = items.slice().sort(itemCompare_);
-  const want  = desired.map(it => it.idx);   // target: physical position -> original index
-  const order = items.map(it => it.idx);     // current physical order
+  const want = desired.map(it => it.idx);   // target: physical position -> original index
 
   let alreadySorted = true;
-  for (let i = 0; i < n; i++) { if (order[i] !== want[i]) { alreadySorted = false; break; } }
+  for (let i = 0; i < n; i++) { if (want[i] !== i) { alreadySorted = false; break; } }
   if (alreadySorted) { ss.toast('Already in order.', 'Sort'); return; }
 
-  // Plan the minimum moves (selection from the top) on a simulated array.
-  const sim = order.slice();
+  // Keep the longest run of rows already in the right relative order; move the rest.
+  const targetPos = new Array(n);
+  want.forEach((idx, pos) => { targetPos[idx] = pos; });
+  const seq = [];
+  for (let i = 0; i < n; i++) seq.push(targetPos[i]);   // order is the identity 0..n-1
+  const keep = new Set(lisIndices_(seq));               // physical indices (= original idx) to keep
+
+  // Plan the moves on a simulated array that mirrors Sheet.moveRows exactly.
+  const cur = [];
+  for (let i = 0; i < n; i++) cur.push(i);
   const moves = [];
   for (let k = 0; k < n; k++) {
-    if (sim[k] === want[k]) continue;
-    let p = -1;
-    for (let j = k + 1; j < n; j++) { if (sim[j] === want[k]) { p = j; break; } }
-    moves.push([p, k]);                       // move row at sim-pos p up to pos k
-    sim.splice(k, 0, sim.splice(p, 1)[0]);
+    const R = want[k];
+    if (keep.has(R)) continue;                  // anchor row — leave it
+    const p = cur.indexOf(R);
+    let destRel;
+    if (k === 0) { if (p === 0) continue; destRel = 0; }
+    else {
+      const aPos = cur.indexOf(want[k - 1]);    // the row that should precede R
+      if (p === aPos + 1) continue;             // already right after it
+      destRel = aPos + 1;
+    }
+    moves.push([p, destRel]);
+    // simulate moveRows(p -> insert before destRel)
+    const el = cur.splice(p, 1)[0];
+    const ins = (p < destRel) ? destRel - 1 : destRel;
+    cur.splice(ins, 0, el);
   }
 
-  // Apply as whole-row moves when reasonable — clean version history, and
-  // formatting / notes / validation travel with each row automatically.
+  if (moves.length === 0) { ss.toast('Already in order.', 'Sort'); return; }
+
+  // Apply as whole-row moves when reasonable — clean version history; formatting,
+  // notes and validation travel with each row automatically.
   if (moves.length <= MOVE_LIMIT) {
     for (let m = 0; m < moves.length; m++) {
-      const p = moves[m][0], k = moves[m][1];
-      const srcRow = firstRow + p;
-      sheet.moveRows(sheet.getRange(srcRow + ':' + srcRow), firstRow + k);
+      const p = moves[m][0], destRel = moves[m][1];
+      sheet.moveRows(sheet.getRange((firstRow + p) + ':' + (firstRow + p)), firstRow + destRel);
     }
     SpreadsheetApp.flush();
     ss.toast('Sorted with ' + moves.length + ' row move' + (moves.length === 1 ? '' : 's') + '.',
@@ -160,5 +204,5 @@ function sortItemsWithinRooms() {
   range.setFontColors(rows.map(r => r.fc));
   range.setFontWeights(rows.map(r => r.fw));
   range.setNotes(rows.map(r => r.nt));
-  ss.toast('Sorted ' + n + ' rows (bulk rewrite).', 'Sort Complete');
+  ss.toast('Sorted ' + n + ' rows (bulk rewrite — ' + moves.length + ' moves needed).', 'Sort Complete');
 }
