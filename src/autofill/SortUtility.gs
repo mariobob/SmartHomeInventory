@@ -48,6 +48,7 @@ const ROOM_ORDER = [
   'Front door',
   'Front yard',
   'Porch',
+  'Parking',
   'Apartment',
   'On the go',
   'Unassigned',
