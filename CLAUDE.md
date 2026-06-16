@@ -1,0 +1,54 @@
+# Smart Home Inventory — project context
+
+A Google Sheet ("Smart Home Inventory") plus a **container-bound Apps Script** that catalogues every smart/home device. This file is the carry-over context so a fresh Claude Code session can pick up without re-deriving everything.
+
+## IDs
+- **Spreadsheet:** `1jV_FbzzY1N-4-fmR5M9HzKcNn_ZXcWQTA7Jf-1fWd4g`
+- **Apps Script project (bound):** `18ozKcnB6IspKlKNm9TMILLqG_F0hFQ35H7lbu5FxgDUsPsE7HbqCGxp9`
+
+## Layout
+- Code lives in `src/autofill/*.gs` (+ `AddModelDialog.html`).
+- One logical change per commit. Keep `src/autofill/` and the live script in sync.
+
+## Sheet structure (Items tab)
+Header row 1, data from row 2. `COLUMN_MAP` (Config.gs, 1-based): Room=1, Device type=2, Manufacturer=3, Nickname=4, Actual device name=5, Mac address=6, Zigbee ID=7, Model=8, Serial number=9, Luminous flux=10, Power=11, Plug type=12, Row done?=13, Smart=14, Installed?=15, Old name=16, Notes=17, **Price paid (€)=18**, **Purchase date=19**.
+**Retail price (€) = column T (20)** — filled with ballpark estimates, NOT in COLUMN_MAP (no script logic depends on it). `Price paid` is left empty for the user's actual prices.
+
+## Conventions (important)
+- **No dated comments in code** — git records dates.
+- **Sort order is hardcoded** in `SortUtility.gs` (`ROOM_ORDER`, `DEVICE_TYPE_ORDER`, `MANUFACTURER_ORDER`). It is the user's **physical** room order — NOT alphabetical, NOT the dropdown order. Don't "tidy" it.
+- Sorting uses **minimal whole-row moves** (LIS-based) so version history shows small moves, not a full rewrite.
+
+## Files & features
+- `AutoFillDeviceInfo.gs` — `onEdit` autofills device fields when a Model is entered; `getDeviceInfo(model)` + `fillDeviceInformation(sheet,row,info)`.
+- `DeviceDatabase.gs` — `DEVICE_MAP` (model → device info), ~98 models.
+- `Config.gs` — `COLUMN_MAP`, `CONFIG`, `FILLABLE_FIELDS`, helpers.
+- `SortUtility.gs` — `sortItemsWithinRooms()`.
+- `ValidationUtility.gs` — validate/fix against the database.
+- `MenuManager.gs` — `onOpen` builds the "🏠 Smart Home Tools" menu.
+- `DropdownAutoAdd.gs` — **DEPLOYED.** Installable onEdit: typing a value not in a dropdown offers to add it. Enable: Smart Home Tools → ⚙️ Setup → Enable dropdown auto-add (authorize once; it also relaxes reject→warning validation).
+- `PhotoIntake.gs` — **COMMITTED, NOT YET DEPLOYED.** See below.
+
+## PhotoIntake.gs — finishing the deploy
+Drop a device-label photo into a Drive "Inbox" folder → a 15-min trigger OCRs it (Advanced Drive Service), matches the model against `DEVICE_MAP`, appends a **flagged** review row to Items (auto-filling known models) with the photo linked in Notes, then moves the photo to a "Processed" folder. If OCR finds no known model the row is still created (orange flag) with the photo + raw text, so you just type the model and autofill does the rest. Label reading is isolated in `extractDeviceFromText_()` — swap it for an AI-vision call to grow into the "snap-and-forget" big idea.
+
+To deploy:
+1. `clasp push` (or paste the file into the editor).
+2. **Enable the Advanced Drive Service** "Drive API" (v2) — needed for OCR. In the manifest: `dependencies.enabledAdvancedServices` → `{ "userSymbol": "Drive", "serviceId": "drive", "version": "v2" }`.
+3. Ensure OAuth scopes include: `spreadsheets`, `drive`, `documents`, `script.scriptapp`, `script.container.ui`.
+4. Run `setupPhotoIntake` (authorize Drive + triggers). It creates the Drive folders and the 15-min trigger and shows the Inbox folder URL.
+5. Drop a label photo in "Smart Home Inventory - Inbox", run "Process inbox now".
+
+## Deploying with clasp
+```
+npm i -g @google/clasp
+clasp login
+# .clasp.json (already in repo) points at the scriptId with rootDir src/autofill
+clasp pull   # first time: pulls appsscript.json (manifest) into src/autofill
+# add the Drive advanced service + scopes above to appsscript.json, then:
+clasp push
+```
+Note: `clasp pull` overwrites local with live — do it into a scratch checkout if you don't want to lose `PhotoIntake.gs` (which is in the repo but not yet live).
+
+## Statistics tab
+Rebuilt as a live dashboard (KPI cards, Value summary, By Room + column chart, By Manufacturer, By Device Type + pie chart, Status) via a one-off `__buildDashboard()` (temp file, since deleted). Numbers are live COUNTIF/SUMIF formulas; the category lists are fixed at build time, so regenerate if you add a brand-new room/brand/type.
