@@ -2,64 +2,170 @@
  * Smart Home Inventory - Photo Intake
  *
  * Drop a photo of a device label into the Drive "Inbox" folder and this
- * pipeline reads the label (OCR), matches the model against the Device
- * Database, appends a flagged row to the Items sheet (auto-filling known
- * models), then files the photo into a "Processed" folder and links it in the
- * row's Notes.
+ * pipeline reads the label, matches the model against the Device Database,
+ * appends a flagged row to the Items sheet (auto-filling known models), then
+ * files the photo into a "Processed" folder and links it in the row's Notes.
  *
  * Set up once:  Smart Home Tools -> 📷 Photo Intake -> Set up photo intake
+ * Pick reader:  Smart Home Tools -> 📷 Photo Intake -> Reader mode -> OCR / AI / Off
  * Run any time: Smart Home Tools -> 📷 Photo Intake -> Process inbox now
- *               (it also runs automatically every 15 minutes once set up)
+ *               (it also runs automatically every 15 minutes when a reader is on)
  *
- * FUTURE-PROOFING: the label reader is isolated in extractDeviceFromText_().
- * Today it is OCR + Device-Database match. To grow into the "snap-and-forget"
- * idea, swap that one function for an AI-vision call (pass the image blob to a
- * model, get back model/serial/brand) - nothing else has to change. The Drive
- * folder can also be fed automatically from a phone or a Photos Picker later.
+ * PLUGGABLE READERS. The label reader is a swappable plugin, chosen by a
+ * persisted "reader mode" (Script Property INTAKE_PROP_MODE):
+ *   'ocr' — OCR via the Advanced Drive Service + Device-Database match (no key,
+ *           recognises only models already in the database).
+ *   'ai'  — Claude vision: the photo is sent to the Anthropic API, which reads
+ *           the model / manufacturer / serial off any label (needs an API key).
+ *   'off' — automation stopped: the 15-minute trigger is removed and the worker
+ *           no-ops. This is the default until a reader is chosen.
+ * Add a third engine by adding one entry to INTAKE_READERS — nothing else changes.
  *
- * Requires the Advanced Drive Service ("Drive API") to be enabled for OCR.
+ * The OCR reader requires the Advanced Drive Service ("Drive API") to be enabled.
+ * The AI reader requires a Claude API key (Reader mode -> Set Claude API key);
+ * the key is stored privately in Script Properties, never in the sheet or code.
  */
 
 const INTAKE_INBOX_NAME = 'Smart Home Inventory - Inbox';
 const INTAKE_DONE_NAME  = 'Smart Home Inventory - Processed';
 const INTAKE_PROP_INBOX = 'INTAKE_INBOX_ID';
 const INTAKE_PROP_DONE  = 'INTAKE_DONE_ID';
+const INTAKE_PROP_MODE  = 'INTAKE_READER_MODE';
+const INTAKE_PROP_KEY   = 'INTAKE_CLAUDE_API_KEY';
 const INTAKE_MAX_PER_RUN = 10;
 
+// Claude model used by the AI reader. Opus 4.8 reads labels best (~3¢/photo);
+// switch to 'claude-haiku-4-5' to cut cost to a fraction of a cent per photo.
+const INTAKE_AI_MODEL = 'claude-opus-4-8';
+
+const INTAKE_AI_PROMPT =
+  'This is a photo of a smart-home device label. Read it and return ONLY a ' +
+  'JSON object (no markdown, no commentary) with the keys "model", ' +
+  '"manufacturer" and "serial". Use the exact model or part number printed on ' +
+  'the label for "model". Leave a field as an empty string if it is not ' +
+  'visible. Example: {"model":"LCA001","manufacturer":"Philips Hue","serial":"ABC123"}';
+
+// =============================================================================
+// READER REGISTRY  — each reader takes a Drive file and returns
+//   { found: { model, serial, manufacturer }, text: <raw text for the Notes cell> }
+// =============================================================================
+
+const INTAKE_READERS = {
+  ocr: {
+    label: 'OCR (Drive)',
+    read: function (file) {
+      let text = '';
+      try { text = ocrImage_(file); } catch (e) { text = ''; }
+      const found = extractDeviceFromText_(text);
+      return { found: found, text: text };
+    }
+  },
+  ai: {
+    label: 'Claude vision',
+    read: function (file) {
+      return extractDeviceWithAI_(file);
+    }
+  }
+};
+
+// =============================================================================
+// MODE  — persisted choice of reader (or 'off')
+// =============================================================================
+
+/** Returns the active reader mode: 'ocr', 'ai', or 'off' (default). */
+function getIntakeReaderMode_(props) {
+  props = props || PropertiesService.getScriptProperties();
+  return props.getProperty(INTAKE_PROP_MODE) || 'off';
+}
+
 /**
- * One-time setup: creates the Drive folders and installs the 15-minute trigger.
- * The first run asks you to authorize Drive + triggers.
+ * Persists the reader mode and (re)installs or removes the 15-minute trigger to
+ * match. 'off' removes it; 'ocr'/'ai' ensure the folders + trigger exist.
+ */
+function applyIntakeReaderMode_(mode) {
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty(INTAKE_PROP_MODE, mode);
+
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'processPhotoInbox') ScriptApp.deleteTrigger(t);
+  });
+
+  if (mode !== 'off') {
+    getOrCreateFolder_(props, INTAKE_PROP_INBOX, INTAKE_INBOX_NAME);
+    getOrCreateFolder_(props, INTAKE_PROP_DONE,  INTAKE_DONE_NAME);
+    ScriptApp.newTrigger('processPhotoInbox').timeBased().everyMinutes(15).create();
+  }
+}
+
+// Menu handlers — set the reader mode.
+function setIntakeReaderOCR() {
+  applyIntakeReaderMode_('ocr');
+  SpreadsheetApp.getActive().toast('Reader: OCR (Drive). Checked every 15 min.', 'Photo Intake', 6);
+}
+
+function setIntakeReaderAI() {
+  const props = PropertiesService.getScriptProperties();
+  applyIntakeReaderMode_('ai');
+  const ui = SpreadsheetApp.getUi();
+  if (!props.getProperty(INTAKE_PROP_KEY)) {
+    ui.alert('Reader set to Claude vision',
+      'No Claude API key is set yet, so processing will fail until you add one.\n\n' +
+      'Run 📷 Photo Intake → Reader mode → Set Claude API key.', ui.ButtonSet.OK);
+  } else {
+    SpreadsheetApp.getActive().toast('Reader: Claude vision. Checked every 15 min.', 'Photo Intake', 6);
+  }
+}
+
+function setIntakeReaderOff() {
+  applyIntakeReaderMode_('off');
+  SpreadsheetApp.getActive().toast('Photo intake is off. Folders are kept.', 'Photo Intake', 6);
+}
+
+/** Stores the Claude API key privately in Script Properties. */
+function setClaudeApiKey() {
+  const ui = SpreadsheetApp.getUi();
+  const res = ui.prompt('Claude API key',
+    'Paste your Anthropic API key (starts with "sk-ant-"). It is stored ' +
+    'privately in Script Properties — never in the sheet or the code.',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  const key = res.getResponseText().trim();
+  if (!key) { ui.alert('No key entered.'); return; }
+  PropertiesService.getScriptProperties().setProperty(INTAKE_PROP_KEY, key);
+  ui.alert('Saved', 'Claude vision is ready. Switch Reader mode to "Claude vision" to use it.', ui.ButtonSet.OK);
+}
+
+// =============================================================================
+// SETUP
+// =============================================================================
+
+/**
+ * One-time setup: creates the Drive folders, switches the reader on (OCR by
+ * default) and installs the 15-minute trigger. The first run asks you to
+ * authorize Drive + triggers.
  */
 function setupPhotoIntake() {
   const props = PropertiesService.getScriptProperties();
   const inbox = getOrCreateFolder_(props, INTAKE_PROP_INBOX, INTAKE_INBOX_NAME);
   const done  = getOrCreateFolder_(props, INTAKE_PROP_DONE,  INTAKE_DONE_NAME);
 
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'processPhotoInbox') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('processPhotoInbox').timeBased().everyMinutes(15).create();
+  // Default to OCR unless a reader was already chosen.
+  const mode = getIntakeReaderMode_(props);
+  applyIntakeReaderMode_(mode === 'off' ? 'ocr' : mode);
 
   const ui = SpreadsheetApp.getUi();
   ui.alert(
     'Photo intake ready',
     'Drop device-label photos into this Drive folder:\n\n' + inbox.getName() + '\n' + inbox.getUrl() +
-    '\n\nIt is checked automatically every 15 minutes. You can also run ' +
-    '"Process inbox now" at any time. Processed photos are moved to "' + done.getName() + '".',
+    '\n\nIt is checked automatically every 15 minutes. Pick the reader under ' +
+    '"Reader mode" (OCR or Claude vision). Processed photos are moved to "' + done.getName() + '".',
     ui.ButtonSet.OK
   );
 }
 
-/** Turns off the automatic checking (folders and processed photos are kept). */
+/** Back-compat menu wrapper: turns the automation off. */
 function disablePhotoIntake() {
-  let removed = 0;
-  ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'processPhotoInbox') { ScriptApp.deleteTrigger(t); removed++; }
-  });
-  SpreadsheetApp.getUi().alert(
-    removed ? 'Automatic photo intake is now off. Folders are kept; you can still run "Process inbox now".'
-            : 'Automatic photo intake was not running.'
-  );
+  setIntakeReaderOff();
 }
 
 function getOrCreateFolder_(props, key, name) {
@@ -71,12 +177,27 @@ function getOrCreateFolder_(props, key, name) {
   return folder;
 }
 
+// =============================================================================
+// WORKER
+// =============================================================================
+
 /**
- * Worker: processes new photos in the Inbox folder. Runs on the trigger and
- * from the "Process inbox now" menu item.
+ * Worker: processes new photos in the Inbox folder using the active reader.
+ * Runs on the trigger and from the "Process inbox now" menu item.
  */
 function processPhotoInbox() {
   const props = PropertiesService.getScriptProperties();
+  const mode  = getIntakeReaderMode_(props);
+  if (mode === 'off') {
+    SpreadsheetApp.getActive().toast('Photo intake is off — pick a reader under Reader mode.', 'Photo Intake', 6);
+    return;
+  }
+  const reader = INTAKE_READERS[mode];
+  if (!reader) {
+    SpreadsheetApp.getActive().toast('Unknown reader "' + mode + '".', 'Photo Intake', 6);
+    return;
+  }
+
   const inbox = getOrCreateFolder_(props, INTAKE_PROP_INBOX, INTAKE_INBOX_NAME);
   const done  = getOrCreateFolder_(props, INTAKE_PROP_DONE,  INTAKE_DONE_NAME);
   const ss = SpreadsheetApp.getActive();
@@ -91,24 +212,34 @@ function processPhotoInbox() {
     if (String(file.getMimeType()).indexOf('image/') !== 0) continue;   // only images
     processed++;
 
-    let text = '';
-    try { text = ocrImage_(file); } catch (e) { text = ''; log.push('OCR error: ' + e.message); }
-    const found = extractDeviceFromText_(text);
-    appendIntakeRow_(sheet, file, found, text);
+    let result;
+    try {
+      result = reader.read(file);
+    } catch (e) {
+      result = { found: { model: '', serial: '', manufacturer: '' }, text: '' };
+      log.push('Reader error: ' + e.message);
+    }
+    const found = result.found || {};
+    appendIntakeRow_(sheet, file, found, result.text || '');
     added++;
     if (found.model) matched++;
 
     try { file.moveTo(done); }
     catch (e) { try { done.addFile(file); inbox.removeFile(file); } catch (e2) {} }
-    log.push((found.model || '(no model matched)'));
+    log.push((found.model || '(no model)'));
   }
 
   const msg = processed
-    ? ('Photo intake: ' + processed + ' photo(s), ' + added + ' row(s) added, ' + matched + ' matched a known model.')
+    ? ('Photo intake (' + reader.label + '): ' + processed + ' photo(s), ' + added +
+       ' row(s) added, ' + matched + ' with a model.')
     : 'No new photos found in the Inbox folder.';
   Logger.log(msg + ' ' + JSON.stringify(log));
   ss.toast(msg, 'Photo Intake', 6);
 }
+
+// =============================================================================
+// READER: OCR  (Advanced Drive Service + Device-Database match)
+// =============================================================================
 
 /**
  * OCRs an image file into text using the Advanced Drive Service. Works whether
@@ -127,9 +258,8 @@ function ocrImage_(file) {
 }
 
 /**
- * v1 label reader: find a known model number from the Device Database inside
- * the OCR text. Returns { model, serial }. UPGRADE HOOK: replace the body with
- * an AI-vision call for full extraction of any label.
+ * Find a known model number from the Device Database inside the OCR text.
+ * Returns { model, serial }.
  */
 function extractDeviceFromText_(text) {
   const out = { model: '', serial: '' };
@@ -150,8 +280,77 @@ function extractDeviceFromText_(text) {
   return out;
 }
 
+// =============================================================================
+// READER: AI  (Claude vision via the Anthropic API)
+// =============================================================================
+
+/**
+ * Sends the photo to Claude and asks it to read the label. Returns
+ * { found: { model, serial, manufacturer }, text }. Throws if no key is set or
+ * the API call fails (the worker logs the error and still creates a flagged row).
+ */
+function extractDeviceWithAI_(file) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty(INTAKE_PROP_KEY);
+  if (!apiKey) throw new Error('No Claude API key set — run Reader mode → Set Claude API key.');
+
+  const blob = file.getBlob();
+  const payload = {
+    model: INTAKE_AI_MODEL,
+    max_tokens: 400,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: blob.getContentType(), data: Utilities.base64Encode(blob.getBytes()) } },
+        { type: 'text', text: INTAKE_AI_PROMPT }
+      ]
+    }]
+  };
+
+  const resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  const code = resp.getResponseCode();
+  const body = resp.getContentText();
+  if (code !== 200) throw new Error('Claude API ' + code + ': ' + body.slice(0, 200));
+
+  const data = JSON.parse(body);
+  const textOut = (data.content || [])
+    .filter(function (b) { return b.type === 'text'; })
+    .map(function (b) { return b.text; })
+    .join('');
+
+  const parsed = parseAiJson_(textOut) || {};
+  return {
+    found: {
+      model: String(parsed.model || '').trim(),
+      serial: String(parsed.serial || '').trim(),
+      manufacturer: String(parsed.manufacturer || '').trim()
+    },
+    text: textOut
+  };
+}
+
+/** Tolerantly parse the JSON object out of the model's text reply. */
+function parseAiJson_(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch (e) {}
+  const m = text.match(/\{[\s\S]*\}/);   // strip any markdown fences / prose
+  if (m) { try { return JSON.parse(m[0]); } catch (e2) {} }
+  return null;
+}
+
+// =============================================================================
+// ROW
+// =============================================================================
+
 /** Appends a flagged review row for one photo. */
-function appendIntakeRow_(sheet, file, found, ocrText) {
+function appendIntakeRow_(sheet, file, found, readerText) {
+  found = found || {};
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
   const newRow = lastRow + 1;
@@ -171,11 +370,17 @@ function appendIntakeRow_(sheet, file, found, ocrText) {
     const sc = sheet.getRange(newRow, COLUMN_MAP['Serial number']);
     if (!sc.getValue()) sc.setValue(found.serial);
   }
+  // The AI reader can also read the brand off the label — fill it when the
+  // model wasn't in the database (so autofill didn't already supply it).
+  if (found.manufacturer && COLUMN_MAP['Manufacturer']) {
+    const mc = sheet.getRange(newRow, COLUMN_MAP['Manufacturer']);
+    if (!mc.getValue()) mc.setValue(found.manufacturer);
+  }
 
   const note = '📷 From photo ' + new Date().toLocaleString() +
-    (found.model ? ' · matched model ' + found.model : ' · model not recognised - please fill in') +
+    (found.model ? ' · model ' + found.model : ' · model not read - please fill in') +
     ' · ' + file.getUrl() +
-    (ocrText ? ' · OCR: ' + ocrText.replace(/\s+/g, ' ').slice(0, 120) : '');
+    (readerText ? ' · read: ' + String(readerText).replace(/\s+/g, ' ').slice(0, 200) : '');
   sheet.getRange(newRow, COLUMN_MAP['Notes']).setValue(note);
 
   dst.setBackground(found.model ? '#fff8e1' : '#ffe0b2');   // soft yellow if matched, orange if unknown

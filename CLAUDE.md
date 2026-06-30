@@ -30,7 +30,14 @@ Header row 1, data from row 2. `COLUMN_MAP` (Config.gs, 1-based): Room=1, Device
 - `PhotoIntake.gs` — **COMMITTED, NOT YET DEPLOYED.** See below.
 
 ## PhotoIntake.gs — finishing the deploy
-Drop a device-label photo into a Drive "Inbox" folder → a 15-min trigger OCRs it (Advanced Drive Service), matches the model against `DEVICE_MAP`, appends a **flagged** review row to Items (auto-filling known models) with the photo linked in Notes, then moves the photo to a "Processed" folder. If OCR finds no known model the row is still created (orange flag) with the photo + raw text, so you just type the model and autofill does the rest. Label reading is isolated in `extractDeviceFromText_()` — swap it for an AI-vision call to grow into the "snap-and-forget" big idea.
+Drop a device-label photo into a Drive "Inbox" folder → a 15-min trigger reads it, matches the model against `DEVICE_MAP`, appends a **flagged** review row to Items (auto-filling known models) with the photo linked in Notes, then moves the photo to a "Processed" folder. If no model is read the row is still created (orange flag) with the photo + raw text, so you just type the model and autofill does the rest.
+
+**Pluggable readers.** The label reader is a plugin chosen by a persisted reader mode (Script Property `INTAKE_READER_MODE`), set from the menu (📷 Photo Intake → Reader mode):
+- `ocr` — OCR via the Advanced Drive Service + `DEVICE_MAP` match (no key; only recognises models already in the database). `extractDeviceFromText_()`.
+- `ai` — Claude vision: the photo is POSTed to the Anthropic Messages API (`UrlFetchApp`, no SDK), which reads model/manufacturer/serial off **any** label. `extractDeviceWithAI_()`. Needs an API key — Reader mode → Set Claude API key (stored in Script Property `INTAKE_CLAUDE_API_KEY`, never in code). Model is `INTAKE_AI_MODEL` (`claude-opus-4-8`, ~3¢/photo; swap to `claude-haiku-4-5` for ~sub-cent). Returns strict JSON parsed by `parseAiJson_`.
+- `off` — default; trigger removed, worker no-ops.
+
+Add a third engine by adding one entry to `INTAKE_READERS` — the worker dispatches on mode and nothing else changes. The `ai` reader needs the `script.external_request` scope (for `UrlFetchApp`) in addition to the OCR scopes.
 
 To deploy:
 1. `clasp push` (or paste the file into the editor).
