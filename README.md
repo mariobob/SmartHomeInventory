@@ -1,9 +1,7 @@
 # Smart Home Inventory
 
 ## Overview
-This Google Apps Script system provides two features for Smart Home Inventory:
-1. **Autofill**: Automatically populates device information when Model number is entered
-2. **Validation**: Checks all items against the database and identifies discrepancies
+This Google Apps Script system adds a **🏠 Smart Home Tools** menu to the Smart Home Inventory Google Sheet, with tools for keeping the inventory complete and tidy — autofilling device info from a model number, validating rows against a device database, sorting, and more. Explore the menu (including **ℹ️ Help**) to see what's available.
 
 ## Features
 ### Autofill
@@ -22,7 +20,7 @@ This Google Apps Script system provides two features for Smart Home Inventory:
 ### General
 - ✅ **Custom menu**: Easy access to all tools via "🏠 Smart Home Tools" menu
 - ✅ **Clean code**: Well-structured with separated concerns
-- ✅ **70+ device models**: Pre-loaded with existing inventory data
+- ✅ **Device database**: Pre-loaded with your existing inventory
 
 ## Installation
 ### Step 1: Open Google Spreadsheet
@@ -33,8 +31,7 @@ Open the Google Spreadsheet containing your "Items" sheet.
 2. This opens the script editor in a new tab
 
 ### Step 3: Create script files
-Create **5 files** in the Apps Script editor and copy their contents and names.
-Delete the default `Code.gs` file if it still exists.
+Copy every file from `src/autofill/` into the Apps Script editor, keeping the same file names. Delete the default `Code.gs` file if it still exists. (Or push them with `clasp` — see the deploy notes.)
 
 ### Step 4: Name the project
 1. Click "Untitled project" at the top
